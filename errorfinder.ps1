@@ -1,106 +1,113 @@
-﻿#Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser
-# Network drive mapping
-  #net use X: \\your.server.address\path
-# Load System.Windows.Forms assembly (if necessary)
+# Allow PowerShell to run this script
+Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser
+
+# Load System.Windows.Forms assembly (only if needed)
 if (!(Get-Module -ListAvailable | Where-Object {$_.Name -eq 'System.Windows.Forms'})) {
-  Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Windows.Forms
 }
-# Function to display error messages
+
+# Function to display an error pop-up
 function Show-Error($message) {
-  $errorDialog = New-Object System.Windows.Forms.MessageBoxDialog
-  $errorDialog.Text = "Error"
-  $errorDialog.Message = $message
-  $errorDialog.Buttons = [System.Windows.Forms.MessageBoxButtons]::OK
-  $errorDialog.Icon = [System.Windows.Forms.MessageBoxIcon]::Error
-  $errorDialog.ShowDialog()
+    [System.Windows.Forms.MessageBox]::Show($message, "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
 }
 
-# Define the error patterns to search for
-$errorPatterns1 = ("error")
-$errorPatterns2 = ("invalid")
-$errorPatterns3 = ("server:")
-$errorPatterns4 = ("ora-")
-$errorPatterns5 = ("sp2-")
-$errorPatterns6 = ("object not found")
-$errorPatterns7 = ("no permission")
-$errorPatterns = @($errorPatterns1, $errorPatterns2, $errorPatterns3, $errorPatterns4, $errorPatterns5, $errorPatterns6, $errorPatterns7)
+# Function to display an informational pop-up
+function Show-Info($message) {
+    [System.Windows.Forms.MessageBox]::Show($message, "Information", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+}
 
+# Define keywords or patterns to identify errors in files
+$errorPatterns = @("error", "invalid", "object not found", "no permission")
 
-# Create the main form
+# Create the main user interface form
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "Search for Error Messages"
+$form.Text = "Error Message Finder"
 $form.Size = New-Object System.Drawing.Size(550, 120)
 $form.StartPosition = 'CenterScreen'
+$form.TopMost = $true # Keep the form on top of other windows
 
-# Folder Selection Button
+# Add a button for selecting a folder
 $folderBrowseButton = New-Object System.Windows.Forms.Button
 $folderBrowseButton.Location = New-Object System.Drawing.Point(10, 10)
 $folderBrowseButton.Size = New-Object System.Drawing.Size(150, 20)
 $folderBrowseButton.Text = "Select Folder"
 $folderBrowseButton.Add_Click({
-  $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-  $dialog.ShowNewFolderButton = $false
-  $dialog.SelectedPath = $folderPathTextBox.Text
-  $result = $dialog.ShowDialog()
-  if ($result -eq "OK") {
-    $folderPathTextBox.Text = $dialog.SelectedPath
-  }
+    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dialog.ShowNewFolderButton = $false
+    $dialog.SelectedPath = $folderPathTextBox.Text
+    $result = $dialog.ShowDialog()
+    if ($result -eq "OK") {
+        $folderPathTextBox.Text = $dialog.SelectedPath
+    }
 })
 $form.Controls.Add($folderBrowseButton)
 
-# Folder Path Textbox
+# Add a textbox to display or input the folder path
 $folderPathTextBox = New-Object System.Windows.Forms.TextBox
 $folderPathTextBox.Location = New-Object System.Drawing.Point(165, 10)
 $folderPathTextBox.Size = New-Object System.Drawing.Size(360, 15)
-$folderPathTextBox.Text = "c:\folderpath"  # Set initial path
+$folderPathTextBox.Text = "C:\ExampleFolder"  # Default path (customize as needed)
 $form.Controls.Add($folderPathTextBox)
 
-# Execute Button
+# Add an "Execute" button to start processing
 $executeButton = New-Object System.Windows.Forms.Button
 $executeButton.Location = New-Object System.Drawing.Point(10, 40)
 $executeButton.Size = New-Object System.Drawing.Size(515, 30)
-$executeButton.Text = "Execute"
+$executeButton.Text = "Search for Errors"
 $executeButton.Add_Click({
-  # Get the selected folder path
-  $folderPath = $folderPathTextBox.Text
+    # Retrieve the user-specified folder path
+    $folderPath = $folderPathTextBox.Text
 
-  # Check if the folder path is valid
-  if (Test-Path -Path $folderPath) {
-    # Search for files with error patterns
-    $errorDetails = Get-ChildItem -Path $folderPath -File -Recurse | ForEach-Object {
-      $filePath = $_.FullName  # Store the full file path
-      try {
-        $fileContent = Get-Content -Path $filePath  # Read file content
-      } catch {
-        Write-Error "Error reading file: $filePath"  # Handle file reading error
-        continue  # Skip to next file if error occurs
-      }
-      # Find lines matching error patterns
-      $matchingLines = $fileContent | Where-Object { $_ -match ($errorPatterns -join '|') }
-
-      if ($matchingLines) {
-        New-Object PSObject -Property @{
-          FileName = $filePath.Split('\')[-1]  # Extract filename
-          Content = ($matchingLines | Select-Object -First 3)  # Get 3 matching lines
-          Path = $filePath.Substring(0, $filePath.LastIndexOf('\'))  # Extract path without filename
+    # Verify that the folder exists
+    if (Test-Path -Path $folderPath) {
+        # Search for errors in files under the specified folder
+        $errorDetails = Get-ChildItem -Path $folderPath -File -Recurse | ForEach-Object {
+            $filePath = $_.FullName # Full path of the file
+            try {
+                $fileContent = Get-Content -Path $filePath -Raw # Load file content as a single string
+            } catch {
+                Write-Warning "Unable to read file: $filePath"
+                continue # Skip to the next file if an error occurs
+            }
+            # Find lines matching error patterns
+            $matchingLines = $fileContent -split "`r`n" | ForEach-Object {
+                $matches = @()
+                foreach ($pattern in $errorPatterns) {
+                    # Use Regex to find all matches and calculate column indices
+                    $regex = [regex]::new([regex]::Escape($pattern), [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+                    $matches += $regex.Matches($_) | ForEach-Object {
+                        [PSCustomObject]@{
+                            Column = $_.Index + 1 # Adjust to 1-based index
+                            Pattern = $_.Value
+                        }
+                    }
+                }
+                if ($matches.Count -gt 0) {
+                    [PSCustomObject]@{
+                        Line        = $_
+                        LineNumber  = ($fileContent -split "`r`n").IndexOf($_) + 1 # Line number (1-based)
+                        Columns     = ($matches | ForEach-Object { $_.Column }) -join ", "
+                        Patterns    = ($matches | ForEach-Object { $_.Pattern }) -join ", "
+                        FileName    = $filePath.Split('\')[-1] # Extract filename
+                        FilePath    = $filePath # Full file path
+                    }
+                }
+            }
+            $matchingLines
         }
-      }
-    }
 
-    # Check if any files with errors were found
-    if ($errorDetails) {
-      # Display results in Out-GridView with line wrapping
-      $errorDetails | Out-GridView
-
+        # Display results or notify the user if no errors are found
+        if ($errorDetails) {
+            $errorDetails | Out-GridView -Title "Search Results"
+        } else {
+            Show-Info "No files with matching error patterns were found."
+        }
     } else {
-      Write-Host "No files with error patterns found."
+        # Notify the user if the folder path is invalid
+        Show-Error "The specified folder path does not exist."
     }
-  } else {
-    # Display error message for invalid folder path
-    Show-Error -Message "Invalid folder path."
-  }
 })
 $form.Controls.Add($executeButton)
-# Show the form
+
+# Display the form to the user
 $form.ShowDialog()
-net use x: /d
