@@ -100,10 +100,10 @@ Here’s an example of a log file that the script can analyze:
 2025-03-09 23:20:00 - ERROR: SP2-0640: Not connected.
 ```
 ### Result Output
-| LineNumber | Columns | Patterns | FileName       | FilePath          |
-|------------|---------|----------|----------------|-------------------|
-| 13         | 43      | ERROR    | sample-log.txt | C:\ExampleFolder  |
-| 14         | 43      | ERROR    | sample-log.txt | C:\ExampleFolder  |
+| Line | LineNumber | Columns | Patterns | FileName       | FilePath          |
+| ---------- |------------|---------|----------|----------------|-------------------|
+| Some value | 13         | 43      | ERROR    | sample-log.txt | C:\ExampleFolder  |
+| Some value | 14         | 43      | ERROR    | sample-log.txt | C:\ExampleFolder  |
 
 ---
 
